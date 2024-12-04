@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
-import { useState } from "react";
+import { useTravelContext } from "@/components/context/TravelContext";
 
 type DirectionsProps = {
   origin: string;
@@ -9,22 +9,27 @@ type DirectionsProps = {
   travelMode?: google.maps.TravelMode;
 };
 
-const Directions: React.FC<DirectionsProps> = ({
-  origin,
-  destination,
-  travelMode = google.maps.TravelMode.DRIVING,
-}) => {
+const Directions: React.FC<DirectionsProps> = ({ origin, destination }) => {
   const map = useMap();
   const routesLibrary = useMapsLibrary("routes");
   const [directionsService, setDirectionsService] =
     React.useState<google.maps.DirectionsService>();
   const [directionsRenderer, setDirectionsRenderer] =
     React.useState<google.maps.DirectionsRenderer>();
-  directionsRenderer?.setMap(map);
-  const [routes, setRoutes] = React.useState<google.maps.DirectionsRoute[]>([]);
-  const [routeIndex, setRouteIndex] = useState(0);
-  const selected = routes[routeIndex];
-  const leg = selected?.legs[0];
+
+  const { responses, setResponses, selectedRoute } = useTravelContext();
+  // const [routes, setRoutes] = React.useState<google.maps.DirectionsRoute[]>([]);
+  // const [responses, setResponses] = React.useState<
+  //   google.maps.DirectionsResult[]
+  // >([]);
+  // const [routeIndex, setRouteIndex] = useState(0);
+  // const selected = routes[routeIndex];
+  // const leg = selectedRoute.routes[selectedRoute.index]?.route.legs[0];
+
+  const travelModes = React.useMemo<google.maps.TravelMode[]>(
+    () => Object.values(google.maps.TravelMode),
+    [],
+  );
 
   React.useEffect(() => {
     if (!routesLibrary || !map || !origin || !destination) return;
@@ -36,52 +41,59 @@ const Directions: React.FC<DirectionsProps> = ({
     if (!directionsService || !directionsRenderer || !origin || !destination)
       return;
 
-    directionsService
-      .route({
-        origin: origin,
-        destination: destination,
-        travelMode: travelMode,
-        provideRouteAlternatives: true,
-      })
-      .then((response) => {
-        directionsRenderer.setDirections(response);
-        setRoutes(response.routes);
-      })
-      .catch((error) => {
-        console.error("error fetching directions:", error);
-      });
-  }, [directionsService, directionsRenderer, origin, destination]);
+    const fetchRoutesForAllModes = async () => {
+      try {
+        const responses: google.maps.DirectionsResult[] = [];
+
+        await Promise.all(
+          travelModes.map(async (mode) => {
+            const response = await directionsService.route({
+              origin: origin,
+              destination: destination,
+              travelMode: mode,
+              provideRouteAlternatives: true,
+            });
+            // Ensure the response is valid
+            if (response && response.routes && response.routes.length > 0) {
+              responses.push(response);
+            } else {
+              console.warn(`No routes found for travel mode: ${mode}`);
+            }
+          }),
+        );
+
+        setResponses(responses);
+        directionsRenderer.setDirections(responses[0]);
+      } catch (error) {
+        console.error("Error fetching directions:", error);
+      }
+    };
+    fetchRoutesForAllModes();
+  }, [
+    directionsService,
+    directionsRenderer,
+    origin,
+    destination,
+    travelModes,
+    setResponses,
+  ]);
 
   // Update direction route
   React.useEffect(() => {
-    if (!directionsRenderer) return;
-    directionsRenderer.setRouteIndex(routeIndex);
-  }, [routeIndex, directionsRenderer]);
+    if (!directionsRenderer || !map || responses.length === 0) return;
+    const selectedDirections = responses[selectedRoute.index];
+    if (selectedDirections) {
+      directionsRenderer.setMap(map);
+      directionsRenderer.setDirections(responses[selectedRoute.index] ?? null);
+      directionsRenderer.setRouteIndex(0);
+    } else {
+      console.warn("Invalid directions result; skipping render.");
+    }
+  }, [selectedRoute, directionsRenderer, responses, map]);
 
-  if (!leg) return null;
+  // if (!leg) return null;
 
-  console.log(selected);
-  return (
-    <div className="directions">
-      <h2>{selected.summary}</h2>
-      <p>
-        {leg.start_address.split(",")[0]} to {leg.end_address.split(",")[0]}
-      </p>
-      <p>Distance: {leg.distance?.text}</p>
-      <p>Duration: {leg.duration?.text}</p>
-
-      <h2>Other Routes</h2>
-      <ul>
-        {routes.map((route, index) => (
-          <li key={route.summary}>
-            <button onClick={() => setRouteIndex(index)}>
-              {route.summary}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+  return <div className="directions"></div>;
 };
 
 export default Directions;
