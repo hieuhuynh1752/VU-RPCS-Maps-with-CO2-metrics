@@ -3,53 +3,17 @@
 import React from "react";
 import { useTravelContext } from "@/components/context/TravelContext";
 import { useGoogleMaps } from "@/components/custom-hooks/GoogleMapsContext";
+import RouteOptionList from "@/components/RouteOptionsList";
 
 export const Sidebar: React.FC = () => {
   const { setSearchDirection, responses } = useTravelContext();
-  const { TravelMode } = useGoogleMaps();
   const [origin, setOrigin] = React.useState<string>("");
   const [destination, setDestination] = React.useState<string>("");
-  const [travelMode, setTravelMode] = React.useState<string>(
-    TravelMode.DRIVING,
-  );
+
   console.log(responses);
   return (
     <div className="w-[30vw] bg-white h-screen shadow-lg flex flex-col">
-      {/* Travel Modes */}
-      <div className="flex items-center justify-evenly p-4 border-b">
-        <button
-          className={`p-2 hover:bg-gray-100 w-10 rounded ${travelMode === TravelMode.DRIVING ? "bg-green-500 text-white hover:bg-green-700" : "bg-white"}`}
-          onClick={() => setTravelMode(TravelMode.DRIVING)}
-        >
-          <i className="fas fa-car"></i>
-        </button>
-        <button
-          className={`p-2 hover:bg-gray-100 w-10 rounded ${travelMode === TravelMode.TRANSIT ? "bg-green-500 text-white hover:bg-green-700" : "bg-white"}`}
-          onClick={() => setTravelMode(TravelMode.TRANSIT)}
-        >
-          <i className="fas fa-bus"></i>
-        </button>
-        <button
-          className={`p-2 hover:bg-gray-100 w-10 rounded ${travelMode === TravelMode.BICYCLING ? "bg-green-500 text-white hover:bg-green-700" : "bg-white"}`}
-          onClick={() => setTravelMode(TravelMode.BICYCLING)}
-        >
-          <i className="fas fa-bicycle"></i>
-        </button>
-        <button
-          className={`p-2 hover:bg-gray-100 w-10 rounded ${travelMode === TravelMode.WALKING ? "bg-green-500 text-white hover:bg-green-700" : "bg-white"}`}
-          onClick={() => setTravelMode(TravelMode.WALKING)}
-        >
-          <i className="fas fa-walking"></i>
-        </button>
-        <button
-          className={`p-2 hover:bg-gray-100 w-10 rounded ${travelMode === "flying" ? "bg-green-500 text-white hover:bg-green-700" : "bg-white"}`}
-          onClick={() => setTravelMode("flying")}
-        >
-          <i className="fas fa-plane"></i>
-        </button>
-      </div>
-
-      <div className="flex flex-row p-4 gap-4">
+      <div className="flex flex-row p-4 pb-0 gap-4">
         <div className="flex flex-col space-y-2 grow">
           {/* Starting Point Input */}
           <div className="flex items-center border rounded-lg shadow-sm p-2 gap-1">
@@ -118,9 +82,7 @@ export const Sidebar: React.FC = () => {
       {/*    </li>*/}
       {/*  </ul>*/}
       {/*</div>*/}
-      {responses.map((response, index) => {
-        return <div key={index}>{response.request.travelMode}</div>;
-      })}
+      <RouteOptionList />
 
       {/* Footer Section */}
       <div className="p-4 border-t text-sm text-gray-500">
