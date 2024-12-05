@@ -12,6 +12,10 @@ interface TransitStep {
   departureTime?: string;
   arrivalTime?: string;
   duration?: string;
+  numberOfStops?: number;
+  color?: string;
+  textColor?: string;
+  shortName?: string;
 }
 
 // interface TransitRoute {
@@ -24,12 +28,18 @@ interface TransitStep {
 const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
   travelMode,
 }) => {
-  const { responses } = useTravelContext();
+  const { responses, setSelectedRoute } = useTravelContext();
 
   // const [routes, setRoutes] = React.useState<google.maps.DirectionsRoute[]>([]);
   const [expandedRouteIndex, setExpandedRouteIndex] = React.useState<
     number | null
   >(null); // Track which route is expanded
+
+  const rawResult = React.useMemo(() => {
+    return responses.find(
+      (response) => response.request.travelMode === travelMode,
+    );
+  }, [responses, travelMode]);
 
   const rawRoutes = React.useMemo(() => {
     return responses.find(
@@ -55,6 +65,11 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
             arrivalStop: step.transit?.arrival_stop.name,
             departureTime: step.transit?.departure_time.text,
             arrivalTime: step.transit?.arrival_time.text,
+            numberOfStops: step.transit?.num_stops,
+            //metros
+            color: step.transit?.line.color,
+            textColor: step.transit?.line.text_color,
+            shortName: step.transit?.line.short_name,
           };
         } else {
           return {
@@ -73,20 +88,26 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
     });
   }, [rawRoutes]);
 
-  const toggleRouteDetails = (index: number) => {
-    setExpandedRouteIndex(index === expandedRouteIndex ? null : index); // Toggle expansion
-  };
+  const toggleRouteDetails = React.useCallback(
+    (index: number) => {
+      setSelectedRoute({ routes: rawResult, index });
+      setExpandedRouteIndex(index === expandedRouteIndex ? null : index); // Toggle expansion
+    },
+    [setSelectedRoute, setExpandedRouteIndex, expandedRouteIndex, rawResult],
+  );
 
   const generateBreadcrumbs = (steps: TransitStep[]) => {
     return steps.map((step, index) => {
       if (step.type === "walking") {
         return (
-          <span key={generateRandomId()} className="flex">
+          <span key={generateRandomId()} className="flex gap-2">
             <span className="flex items-center space-x-1">
-              <span>🚶</span>
+              <span>
+                <i className="fas fa-walking"></i>
+              </span>
             </span>
             {index < steps.length ? (
-              <span className="flex items-center space-x-1">
+              <span className="flex items-center space-x-1 text-gray-400">
                 <i className="fas fa-caret-right"></i>
               </span>
             ) : null}
@@ -94,13 +115,30 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
         );
       } else {
         return (
-          <span key={generateRandomId()} className="flex">
+          <span key={generateRandomId()} className="flex gap-2">
             <span className="flex items-center space-x-1 text-gray-800 font-medium">
-              <span>🚌</span>
-              <span>{step.line}</span>
+              {step.color ? (
+                <span
+                  style={{
+                    background: step.color,
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: "small",
+                    lineHeight: "normal",
+                  }}
+                  className="p-1 rounded"
+                >
+                  M
+                </span>
+              ) : (
+                <span className="border-2 border-gray-400 text-gray-500 rounded p-0.5 leading-none">
+                  <i className="fas fa-train"></i>
+                </span>
+              )}
+              <span className="font-medium">{step.shortName ?? step.line}</span>
             </span>
-            {index < steps.length ? (
-              <span className="flex items-center space-x-1">
+            {index < steps.length - 1 ? (
+              <span className="flex items-center text-gray-400 space-x-1">
                 <i className="fas fa-caret-right"></i>
               </span>
             ) : null}
@@ -111,7 +149,7 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
   };
 
   return (
-    <div className="p-6 bg-gray-100 h-full">
+    <div className="p-6 bg-gray-100 min-h-full h-fit">
       {travelMode === google.maps.TravelMode.TRANSIT
         ? parseTransitRoutes().map((route, index) => (
             <div
@@ -133,7 +171,7 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                 </div>
 
                 {/* Breadcrumbs */}
-                <div className="flex flex-wrap items-center mt-2 text-gray-700 space-x-2">
+                <div className="flex flex-wrap items-center mt-2 text-gray-700 space-x-2 gap-y-2">
                   {generateBreadcrumbs(route.steps)}
                 </div>
               </div>
@@ -147,21 +185,31 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                       className="p-2 bg-gray-50 rounded flex items-center"
                     >
                       {step.type === "walking" ? (
-                        <p className="text-gray-700">
-                          🚶 Walk for {step.duration}
+                        <p className="flex gap-2 text-gray-700">
+                          <span className="flex items-center w-4 space-x-1 justify-center">
+                            <span>
+                              <i className="fas fa-walking"></i>
+                            </span>
+                          </span>{" "}
+                          Walk for {step.duration}
                         </p>
                       ) : (
-                        <p className="text-gray-700">
-                          🚌 Take {step.vehicle} ({step.line}) from{" "}
-                          <span className="font-medium">
-                            {step.departureStop}
+                        <div className="flex gap-2 text-gray-700">
+                          <span className="flex text-gray-500 leading-none w-4 justify-center">
+                            <i className="fas fa-train"></i>
                           </span>{" "}
-                          to{" "}
-                          <span className="font-medium">
-                            {step.arrivalStop}
-                          </span>{" "}
-                          ({step.departureTime} — {step.arrivalTime})
-                        </p>
+                          <p>
+                            Take {step.vehicle} ({step.line}) from{" "}
+                            <span className="font-medium">
+                              {step.departureStop}
+                            </span>{" "}
+                            to{" "}
+                            <span className="font-medium">
+                              {step.arrivalStop}
+                            </span>{" "}
+                            ({step.departureTime} — {step.arrivalTime})
+                          </p>
+                        </div>
                       )}
                     </div>
                   ))}

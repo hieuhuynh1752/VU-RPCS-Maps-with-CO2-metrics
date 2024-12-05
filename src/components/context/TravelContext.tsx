@@ -7,7 +7,7 @@ type DirectionType = {
 };
 
 type SelectedRouteType = {
-  routes: google.maps.DirectionsRoute[];
+  routes?: google.maps.DirectionsResult;
   index: number;
 };
 
@@ -34,7 +34,6 @@ export const TravelProvider: React.FC<{ children: React.ReactNode }> = ({
     google.maps.DirectionsResult[]
   >([]);
   const [selectedRoute, setSelectedRoute] = useState<SelectedRouteType>({
-    routes: [],
     index: 0,
   });
   const [selectedTravelMode, setSelectedTravelMode] = React.useState<

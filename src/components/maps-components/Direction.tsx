@@ -17,7 +17,8 @@ const Directions: React.FC<DirectionsProps> = ({ origin, destination }) => {
   const [directionsRenderer, setDirectionsRenderer] =
     React.useState<google.maps.DirectionsRenderer>();
 
-  const { responses, setResponses, selectedRoute } = useTravelContext();
+  const { responses, setResponses, selectedRoute, setSelectedRoute } =
+    useTravelContext();
   // const [routes, setRoutes] = React.useState<google.maps.DirectionsRoute[]>([]);
   // const [responses, setResponses] = React.useState<
   //   google.maps.DirectionsResult[]
@@ -63,6 +64,7 @@ const Directions: React.FC<DirectionsProps> = ({ origin, destination }) => {
         );
 
         setResponses(responses);
+        setSelectedRoute({ routes: responses[0], index: 0 });
         directionsRenderer.setDirections(responses[0]);
       } catch (error) {
         console.error("Error fetching directions:", error);
@@ -70,6 +72,7 @@ const Directions: React.FC<DirectionsProps> = ({ origin, destination }) => {
     };
     fetchRoutesForAllModes();
   }, [
+    setSelectedRoute,
     directionsService,
     directionsRenderer,
     origin,
@@ -81,11 +84,10 @@ const Directions: React.FC<DirectionsProps> = ({ origin, destination }) => {
   // Update direction route
   React.useEffect(() => {
     if (!directionsRenderer || !map || responses.length === 0) return;
-    const selectedDirections = responses[selectedRoute.index];
-    if (selectedDirections) {
+    if (selectedRoute.routes) {
       directionsRenderer.setMap(map);
-      directionsRenderer.setDirections(responses[selectedRoute.index] ?? null);
-      directionsRenderer.setRouteIndex(0);
+      directionsRenderer.setDirections(selectedRoute.routes ?? null);
+      directionsRenderer.setRouteIndex(selectedRoute.index);
     } else {
       console.warn("Invalid directions result; skipping render.");
     }
@@ -93,7 +95,7 @@ const Directions: React.FC<DirectionsProps> = ({ origin, destination }) => {
 
   // if (!leg) return null;
 
-  return <div className="directions"></div>;
+  return <div className=""></div>;
 };
 
 export default Directions;
