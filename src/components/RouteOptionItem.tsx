@@ -2,35 +2,15 @@
 import * as React from "react";
 import { useTravelContext } from "@/components/context/TravelContext";
 import { generateRandomId } from "@/utils/randomId";
-
-interface TransitStep {
-  type: string;
-  line?: string;
-  vehicle?: string;
-  departureStop?: string;
-  arrivalStop?: string;
-  departureTime?: string;
-  arrivalTime?: string;
-  duration?: string;
-  numberOfStops?: number;
-  color?: string;
-  textColor?: string;
-  shortName?: string;
-}
-
-// interface TransitRoute {
-//   duration: string;
-//   departureTime: string;
-//   arrivalTime: string;
-//   steps: TransitStep[];
-// }
+import { fetchEmissions } from "@/utils/api";
+import { isTransitRoutes, Step, TransitRoute } from "@/types/api";
 
 const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
   travelMode,
 }) => {
   const { responses, setSelectedRoute } = useTravelContext();
 
-  // const [routes, setRoutes] = React.useState<google.maps.DirectionsRoute[]>([]);
+  const [routes, setRoutes] = React.useState<TransitRoute[] | Step[]>([]);
   const [expandedRouteIndex, setExpandedRouteIndex] = React.useState<
     number | null
   >(null); // Track which route is expanded
@@ -47,9 +27,7 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
     )?.routes;
   }, [responses, travelMode]);
 
-  console.log(rawRoutes, travelMode);
-
-  const parseTransitRoutes = React.useCallback(() => {
+  const parsedTransitRoutes = React.useMemo(() => {
     if (!rawRoutes) {
       return [];
     }
@@ -60,7 +38,9 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
           return {
             type: "transit",
             line: step.transit?.line.name,
-            vehicle: step.transit?.line.vehicle.type,
+            vehicle: step.transit?.line.vehicle.name,
+            vehicleType: step.transit?.line.vehicle.type.toLowerCase(),
+            distance: step.distance?.value,
             departureStop: step.transit?.departure_stop.name,
             arrivalStop: step.transit?.arrival_stop.name,
             departureTime: step.transit?.departure_time.text,
@@ -77,16 +57,32 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
             duration: step.duration?.text,
           };
         }
-      });
+      }) as Step[];
 
       return {
         duration: legs.duration?.text,
         arrivalTime: legs.arrival_time?.text,
         departureTime: legs.departure_time?.text,
-        steps,
-      };
+        steps: steps,
+      } as TransitRoute;
     });
   }, [rawRoutes]);
+
+  const parsedOtherRoutes = React.useMemo(() => {
+    if (!rawResult) {
+      return [];
+    }
+    return rawResult.routes.map((route) => {
+      return {
+        type: rawResult.request.travelMode.toLowerCase(),
+        distance: route.legs[0]?.distance?.value,
+        //to be implemented: Feat: Allow user to enter vehicleType
+        vehicleType: undefined,
+        duration: route.legs[0]?.duration?.text,
+        summary: route.summary,
+      };
+    }) as Step[];
+  }, [rawResult]);
 
   const toggleRouteDetails = React.useCallback(
     (index: number) => {
@@ -96,7 +92,47 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
     [setSelectedRoute, setExpandedRouteIndex, expandedRouteIndex, rawResult],
   );
 
-  const generateBreadcrumbs = (steps: TransitStep[]) => {
+  const handleCalculateCO2 = React.useCallback(async (steps: Step[]) => {
+    try {
+      return await fetchEmissions(steps);
+    } catch (error) {
+      console.log(error);
+    }
+  }, []);
+
+  const handleGetTransitRoutesWithCO2 = React.useCallback(async () => {
+    const data = await Promise.all(
+      parsedTransitRoutes.map(async (route) => {
+        const newSteps = await handleCalculateCO2(route.steps);
+        let totalCo2 = 0;
+        newSteps?.steps.map((step) => {
+          totalCo2 += step?.co2 ?? 0;
+        });
+        return {
+          ...route,
+          totalCo2: parseFloat(totalCo2.toFixed(1)),
+          steps: newSteps?.steps ?? route.steps,
+        };
+      }),
+    );
+    setRoutes(data);
+  }, [setRoutes, parsedTransitRoutes, handleCalculateCO2]);
+
+  const handleGetRoutesWithCO2 = React.useCallback(async () => {
+    const newSteps = await handleCalculateCO2(parsedOtherRoutes);
+    const data = newSteps?.steps ?? parsedOtherRoutes;
+    setRoutes(data);
+  }, [setRoutes, parsedOtherRoutes, handleCalculateCO2]);
+
+  React.useEffect(() => {
+    if (travelMode === "TRANSIT") {
+      handleGetTransitRoutesWithCO2();
+    } else {
+      handleGetRoutesWithCO2();
+    }
+  }, [travelMode, handleGetTransitRoutesWithCO2, handleGetRoutesWithCO2]);
+
+  const generateBreadcrumbs = (steps: Step[]) => {
     return steps.map((step, index) => {
       if (step.type === "walking") {
         return (
@@ -106,7 +142,7 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                 <i className="fas fa-walking"></i>
               </span>
             </span>
-            {index < steps.length ? (
+            {index < steps.length - 1 ? (
               <span className="flex items-center space-x-1 text-gray-400">
                 <i className="fas fa-caret-right"></i>
               </span>
@@ -128,7 +164,7 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                   }}
                   className="p-1 rounded"
                 >
-                  M
+                  {step.vehicle === "Bus" ? "B" : "M"}
                 </span>
               ) : (
                 <span className="border-2 border-gray-400 text-gray-500 rounded p-0.5 leading-none">
@@ -150,8 +186,8 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
 
   return (
     <div className="p-6 bg-gray-100 min-h-full h-fit">
-      {travelMode === google.maps.TravelMode.TRANSIT
-        ? parseTransitRoutes().map((route, index) => (
+      {travelMode === google.maps.TravelMode.TRANSIT && isTransitRoutes(routes)
+        ? routes.map((route, index) => (
             <div
               key={generateRandomId()}
               className="mb-6 border border-gray-300 rounded-lg bg-white p-4 shadow"
@@ -165,9 +201,18 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                   <p className="font-semibold text-gray-800">
                     {route.departureTime} — {route.arrivalTime}
                   </p>
-                  <p className="text-gray-600 text-sm">
-                    Total: {route.duration}
-                  </p>
+                  <div>
+                    <p className="text-gray-600 text-sm text-right">
+                      Total: {route.duration ? route.duration : "NaN"}
+                    </p>
+
+                    <p className="text-right text-sm bg-green-100 px-2 rounded">
+                      <i className="fa-solid fa-leaf text-green-500 pr-2"></i>
+                      {
+                        route.totalCo2
+                      } kg CO₂e
+                    </p>
+                  </div>
                 </div>
 
                 {/* Breadcrumbs */}
@@ -185,7 +230,7 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                       className="p-2 bg-gray-50 rounded flex items-center"
                     >
                       {step.type === "walking" ? (
-                        <p className="flex gap-2 text-gray-700">
+                        <p className="flex gap-2 text-gray-700 font-semibold">
                           <span className="flex items-center w-4 space-x-1 justify-center">
                             <span>
                               <i className="fas fa-walking"></i>
@@ -194,21 +239,44 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                           Walk for {step.duration}
                         </p>
                       ) : (
-                        <div className="flex gap-2 text-gray-700">
-                          <span className="flex text-gray-500 leading-none w-4 justify-center">
-                            <i className="fas fa-train"></i>
-                          </span>{" "}
-                          <p>
-                            Take {step.vehicle} ({step.line}) from{" "}
-                            <span className="font-medium">
-                              {step.departureStop}
-                            </span>{" "}
-                            to{" "}
-                            <span className="font-medium">
-                              {step.arrivalStop}
-                            </span>{" "}
-                            ({step.departureTime} — {step.arrivalTime})
-                          </p>
+                        <div className="flex gap-2 text-gray-700 grow">
+                          <div className="flex text-gray-500 leading-none w-4 justify-center p-1">
+                            <i
+                              className={
+                                step.vehicle === "Bus"
+                                  ? "fas fa-bus"
+                                  : "fas fa-train"
+                              }
+                            ></i>
+                          </div>{" "}
+                          <div className="flex flex-col grow pr-2 gap-y-1">
+                            <div className="flex justify-between">
+                              <div className="flex font-semibold">
+                                Take {step.vehicle}{" "}
+                                {step.shortName ?? step.line}{" "}
+                              </div>
+                              <div className="flex font-semibold flex-col">
+                                <p>
+                                  {step.departureTime} — {step.arrivalTime}
+                                </p>
+                                <p className=" self-end font-medium text-sm bg-green-100 px-2 rounded">
+                                  <i className="fa-solid fa-leaf text-green-500 pr-2"></i>
+                                  {step.co2} kg CO₂e
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-sm">{step.line}</div>
+                            <div>
+                              From{" "}
+                              <span className="font-medium">
+                                {step.departureStop}
+                              </span>{" "}
+                              to{" "}
+                              <span className="font-medium">
+                                {step.arrivalStop}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -217,7 +285,7 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
               )}
             </div>
           ))
-        : rawRoutes?.map((route, index) => {
+        : (routes as Step[]).map((route, index) => {
             return (
               <div
                 key={generateRandomId()}
@@ -232,12 +300,18 @@ const RouteOptionItem: React.FC<{ travelMode: google.maps.TravelMode }> = ({
                     <p className="font-semibold text-gray-800">
                       via {route.summary}
                     </p>
-                    <p className="text-gray-600 text-sm">
-                      Total:{" "}
-                      {route.legs[0].duration
-                        ? route.legs[0].duration.text
-                        : "NaN"}
-                    </p>
+                    <div>
+                      <p className="text-gray-600 text-sm text-right">
+                        Total: {route.duration ? route.duration : "NaN"}
+                      </p>
+
+                      <p className="text-right text-sm bg-green-100 px-2 rounded">
+                        <i className="fa-solid fa-leaf text-green-500 pr-2"></i>
+                        {
+                          route.co2
+                        } kg CO₂e
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>

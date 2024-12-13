@@ -1,0 +1,9 @@
+{
+  "driving": 120,
+  "bus": 80,
+  "subway": 50,
+  "biking": 0,
+  "walking": 0,
+  "heavy_rail": 30,
+  "default": 120
+}
